@@ -1,4 +1,12 @@
 services:
+  sflow-rt:
+    build: ./sflow-rt
+    container_name: sflow-rt
+    restart: unless-stopped
+    ports:
+      - '6343:6343'
+      - '8008:8008'
+      
   onos:
     image: onosproject/onos:2.5.1
     ports:
