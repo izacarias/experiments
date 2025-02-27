@@ -54,7 +54,7 @@ class CustomTopology(Topo):
 
 
 def runNetwork():
-    setLogLevel('info')  # Set the logging level
+    setLogLevel('info')      # Set the logging level
     topo = CustomTopology()  # Create the topology
     net = Mininet(topo=topo, switch=OVSSwitch, build=False)  # Set up the network
 
