@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.node import RemoteController, OVSSwitch
@@ -52,11 +53,34 @@ class CustomTopology(Topo):
         self.addLink(host1, g1_sw1)
         self.addLink(host2, g3_sw8)
 
+def create_veth_pairs(host_names):
+    # get machine IP address
+    local_ip = os.popen('hostname -I').read().split()[0]
+    vm_ip = local_ip + '/24'
+    # get the network address from the IP
+    network = local_ip.split('.')
+
+    mininet_host_ip = 100
+    for host in host_names:
+        # create IP addresses for machines
+        mininet_host_ip += 1
+        internal_ip = network[0] + '.' + network[1] + '.' + network[2] + str(mininet_host_ip) + '/32'
+        info("Creating veth pair for %s\n" % host)
+        os.system( 'ip link add root-%s type veth peer name %s-root' % (host, host) )
+        os.system( 'ip link set root-%s up' % host )
+        os.system( 'ip addr add %s dev root-%s' % (vm_ip, host) )
+        os.system( 'ip route add %s dev root-%s' % (internal_ip, host) )
+
 
 def runNetwork():
     setLogLevel('info')      # Set the logging level
     topo = CustomTopology()  # Create the topology
     net = Mininet(topo=topo, switch=OVSSwitch, build=False)  # Set up the network
+
+    # Get all host nodes
+    host_nodes = net.hosts
+    host_names = [host.name for host in host_nodes]
+    create_veth_pairs(host_names)
 
     # Adding External controller
     c0 = net.addController(name='c0', controller=RemoteController, ip='localhost', protocol='tcp',port=6653)
