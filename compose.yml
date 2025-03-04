@@ -4,7 +4,7 @@ services:
     container_name: sflow-rt
     restart: unless-stopped
     ports:
-      - '6343:6343'
+      - '6343:6343/udp'
       - '8008:8008'
       
   onos:
