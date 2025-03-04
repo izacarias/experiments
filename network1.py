@@ -137,17 +137,24 @@ def runNetwork():
     add_external_interfaces(host_names, net)
 
     net.start()
-    info("Network is running.")
+    info("Network is running. \n")
 
     # Configure IP addresses for hosts to communicate with the root namespace
-    for host in host_names:
-        configure_host_ip(net)
+    configure_host_ip(net)
+
+    for host in host_nodes:
+        info( '*** Running hsflow process in %s \n' % host.name)
+        host.cmd( '/usr/sbin/hsflowd -f ./hsflow/%s.conf -p ./hsflow/%s.pid -D ./hsflow/%s.log' % (host.name, host.name, host.name))
 
     CLI(net)  # Start the mininet command line interface
     net.stop()  # Stop the network when done
 
     info( '*** Deleting old virtual ethernet pairs\n' )
     delete_veth_pairs(host_names)
+
+    # remove hsflow pid from folder ./hsflow
+    for host in host_nodes:
+        os.system( 'rm ./hsflow/%s.pid' % host.name)
 
 if __name__ == '__main__':
     runNetwork()
