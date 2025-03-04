@@ -9,7 +9,7 @@ from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 from mininet.util import customClass
 
-# exec(open('sflow.py').read())
+exec(open('sflow.py').read())
 
 class CustomTopology(Topo):
     def build(self):
@@ -85,13 +85,32 @@ def add_external_interfaces(host_names, net):
         iface_name = host + '-root'
         _intf = Intf( iface_name, net.get(host))
 
-def enable_sflow(net):
-    info("*** Enabling sFlow:\n")
-    sflow = 'ovs-vsctl -- --id=@sflow create sflow agent=%s target=%s sampling=%s polling=%s --' % ('enp8s0','127.0.0.1',10,10)
-    for s in net.switches:
-      sflow += ' -- set bridge %s sflow=@sflow' % s
-    info(' '.join([s.name for s in net.switches]) + "\n")
-    os.system(sflow)
+# Replaces by the exec line at the beginning of the file
+# See line 12
+# def enable_sflow(net):
+#     info("*** Enabling sFlow:\n")
+#     sflow = 'ovs-vsctl -- --id=@sflow create sflow agent=%s target=%s sampling=%s polling=%s --' % ('lo','127.0.0.1',10,10)
+#     for s in net.switches:
+#       sflow += ' -- set bridge %s sflow=@sflow' % s
+#     info(' '.join([s.name for s in net.switches]) + "\n")
+#     info(sflow)
+#     os.system(sflow)
+
+def configure_host_ip(net):
+    local_ip = os.popen('hostname -I').read().split()[0]
+    host_network = local_ip.split('.')
+    vm_ip_base = host_network[0] + '.' + host_network[1] + '.' + host_network[2]
+    host_network = host_network[0] + '.' + host_network[1] + '.' + host_network[2] + '.0/24'
+    mininet_host_ip = 100
+    # get the network address from the IP
+    host_nodes = net.hosts
+    for host in host_nodes:
+        mininet_host_ip += 1
+        host_intf = host.name + '-root'
+        internal_ip = vm_ip_base + '.' + str(mininet_host_ip) + '/24'
+        host.cmd( ' ip addr add %s dev %s' % (internal_ip, host_intf) )
+        host.cmd( ' ip route add %s dev %s' % (host_network, host_intf) )
+
 
 def runNetwork():
     setLogLevel('info')      # Set the logging level
@@ -101,13 +120,8 @@ def runNetwork():
     # Adding External controller
     c0 = net.addController(name='c0', controller=RemoteController, ip='localhost', protocol='tcp',port=6653)
 
-    # Connect switches to Controller
-    for switch in net.switches:
-        switch.start([c0])
-
     # Build the network (to get access to hosts)
-    # net.build()
-
+    net.build()
     # Get all host nodes    # Get all host nodes
     host_nodes = net.hosts
     host_names = [host.name for host in host_nodes]
@@ -122,10 +136,13 @@ def runNetwork():
     info( '*** Adding interface to root namespace\n')
     add_external_interfaces(host_names, net)
 
-    enable_sflow(net)
-
     net.start()
-    print("Network is running.")
+    info("Network is running.")
+
+    # Configure IP addresses for hosts to communicate with the root namespace
+    for host in host_names:
+        configure_host_ip(net)
+
     CLI(net)  # Start the mininet command line interface
     net.stop()  # Stop the network when done
 
