@@ -23,12 +23,20 @@ influxdb_url = os.getenv('INFLUXDB_URL', 'http://localhost:8086')
 influxdb_token = os.getenv('INFLUXDB_TOKEN')
 influxdb_org = os.getenv('INFLUXDB_ORG')
 influxdb_bucket = os.getenv('INFLUXDB_BUCKET')
+# ONOS
+onos_url = os.getenv('ONOS_URL', 'http://localhost:8181'    )
+onos_username = os.getenv('ONOS_USERNAME', 'onos')
+onos_password = os.getenv('ONOS_PASSWORD', 'rocks')
 
 # Definition of sflow-rt- flows
 sflow_flows = {
     "tcprtt": {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcprtt"
+    },
+    "tcpcwndsnd": {
+        "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
+        "value": "tcpcwndsnd"
     }
 }
 
@@ -221,7 +229,7 @@ def runNetwork():
 
     for host in host_nodes:
         info( '*** Running hsflow process in %s \n' % host.name)
-        host.cmd( '/usr/sbin/hsflowd -f ./hsflow/%s.conf -p ./hsflow/%s.pid -D ./hsflow/%s.log' % (host.name, host.name, host.name))
+        host.cmd( '/usr/sbin/hsflowd -dd -f ./hsflow/%s.conf -p ./hsflow/%s.pid -D ./hsflow/%s.log &' % (host.name, host.name, host.name))
 
     #stop event for the thread
     stop_event = threading.Event()
