@@ -1,0 +1,80 @@
+Query: 
+http://localhost:8181/onos/v1/links?device=of%3A0000000000000001
+Response:
+{
+  "links": [
+    {
+      "src": {
+        "port": "2",
+        "device": "of:0000000000000001"
+      },
+      "dst": {
+        "port": "2",
+        "device": "of:0000000000000003"
+      },
+      "type": "DIRECT",
+      "state": "ACTIVE"
+    },
+    {
+      "src": {
+        "port": "1",
+        "device": "of:0000000000000001"
+      },
+      "dst": {
+        "port": "1",
+        "device": "of:0000000000000002"
+      },
+      "type": "DIRECT",
+      "state": "ACTIVE"
+    },
+    {
+      "src": {
+        "port": "1",
+        "device": "of:0000000000000002"
+      },
+      "dst": {
+        "port": "1",
+        "device": "of:0000000000000001"
+      },
+      "type": "DIRECT",
+      "state": "ACTIVE"
+    },
+    {
+      "src": {
+        "port": "2",
+        "device": "of:0000000000000003"
+      },
+      "dst": {
+        "port": "2",
+        "device": "of:0000000000000001"
+      },
+      "type": "DIRECT",
+      "state": "ACTIVE"
+    }
+  ]
+}
+
+Query:
+http://localhost:8181/onos/v1/statistics/ports/of%3A0000000000000001/1
+Response:
+{
+  "statistics": [
+    {
+      "device": "of:0000000000000001",
+      "ports": [
+        {
+          "port": 1,
+          "packetsReceived": 227,
+          "packetsSent": 227,
+          "bytesReceived": 30863,
+          "bytesSent": 30863,
+          "packetsRxDropped": 0,
+          "packetsTxDropped": 0,
+          "packetsRxErrors": 0,
+          "packetsTxErrors": 0,
+          "durationSec": 301
+        }
+      ]
+    }
+  ]
+}

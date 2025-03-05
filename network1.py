@@ -4,6 +4,7 @@ import os
 import requests
 import time
 import threading
+from requests.auth import HTTPBasicAuth
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.node import RemoteController, OVSSwitch
@@ -46,6 +47,36 @@ exec(open('sflow.py').read())
 # Initialize InfluxDB client
 influxdb_client = InfluxDBClient(url=influxdb_url, token=influxdb_token, org=influxdb_org)
 influxdb_write_api = influxdb_client.write_api(write_options=WriteOptions(batch_size=1))
+
+# Get links from ONOS
+def onos_get_links():
+    url = '%s/onos/v1/links' % onos_url
+    response = requests.get(url, auth=HTTPBasicAuth(onos_username, onos_password))
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Failed to get links from ONOS: {response.status_code} {response.text}")
+
+# Get link usage from ONOS
+def onos_get_port_stats(device_id, port_id):
+    url = "%s/onos/v1/statistics/ports/%s/%s" % (onos_url, device_id, port_id)
+    response = requests.get(url, auth=HTTPBasicAuth(onos_username, onos_password))
+    response.raise_for_status()
+    return response.json()
+
+def onos_print_link_usage():
+    links = onos_get_links()
+    for link in links['links']:
+        src_device = link['src']['device']
+        src_port = link['src']['port']
+        dst_device = link['dst']['device']
+        # Get statistics for the source device
+        src_stats = onos_get_port_stats(src_device, src_port)
+        sent_bytes = src_stats.get('statistics')[0].get('ports')[0].get('bytesSent')
+        duration = src_stats.get('statistics')[0].get('ports')[0].get('durationSec')
+        # calculate the datarate in bits per second
+        datarate = (sent_bytes * 8) / duration
+        print("Datarate for %s to %s: %d bps" % (src_device, dst_device, datarate))
 
 # Define sflow-rt flow if not exists
 def define_sflowrt_flow():
@@ -100,6 +131,7 @@ def export_to_influxdb(stop_event):
                             .field("value", float(flow_value))
                         influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
                         info("InfluxDB point written successfully\n")
+            onos_print_link_usage()
             time.sleep(1)
         except Exception as e:
             info("Error exporting to InfluxDB: %s \n" % e)
