@@ -29,6 +29,9 @@ onos_url = os.getenv('ONOS_URL', 'http://localhost:8181'    )
 onos_username = os.getenv('ONOS_USERNAME', 'onos')
 onos_password = os.getenv('ONOS_PASSWORD', 'rocks')
 
+# Add historical data storage
+onos_link_history = {}  # Format: {(device_id, port_id): {'bytes': value, 'duration': value}}
+
 # Definition of sflow-rt- flows
 sflow_flows = {
     "tcprtt": {
@@ -64,19 +67,40 @@ def onos_get_port_stats(device_id, port_id):
     response.raise_for_status()
     return response.json()
 
-def onos_print_link_usage():
+def onos_get_link_usage():
+    global onos_link_history
+    return_value = []
     links = onos_get_links()
     for link in links['links']:
         src_device = link['src']['device']
         src_port = link['src']['port']
         dst_device = link['dst']['device']
+        
         # Get statistics for the source device
         src_stats = onos_get_port_stats(src_device, src_port)
-        sent_bytes = src_stats.get('statistics')[0].get('ports')[0].get('bytesSent')
-        duration = src_stats.get('statistics')[0].get('ports')[0].get('durationSec')
-        # calculate the datarate in bits per second
-        datarate = (sent_bytes * 8) / duration
-        print("Datarate for %s to %s: %d bps" % (src_device, dst_device, datarate))
+        current_bytes = src_stats.get('statistics')[0].get('ports')[0].get('bytesSent')
+        current_duration = src_stats.get('statistics')[0].get('ports')[0].get('durationSec')
+        
+        # Get historical data
+        link_key = (src_device, src_port)
+        prev_stats = onos_link_history.get(link_key, {'bytes': current_bytes, 'duration': current_duration})
+        
+        # Calculate delta values
+        bytes_delta = current_bytes - prev_stats['bytes']
+        duration_delta = current_duration - prev_stats['duration']
+        
+        # Calculate data rate
+        datarate = (bytes_delta * 8) / duration_delta if duration_delta > 0 else 0
+        
+        # Update historical data
+        onos_link_history[link_key] = {
+            'bytes': current_bytes,
+            'duration': current_duration
+        }
+        debug("Datarate for %s to %s: %d bps \n" % (src_device, dst_device, datarate))
+        return_value.append((src_device, dst_device, datarate))
+    return return_value
+
 
 # Define sflow-rt flow if not exists
 def define_sflowrt_flow():
@@ -104,7 +128,7 @@ def get_flow_value(flow, src_host, dst_host):
             key_parts = key.split(',')
             if key_parts[0] == src_host and key_parts[1] == dst_host:
                 flow_value = flow_item.get('value')
-                info("sflow-rt value for flow %s(src: %s dst: %s): %s\n" % (flow, src_host, dst_host, flow_value))
+                debug("sflow-rt value for flow %s(src: %s dst: %s): %s\n" % (flow, src_host, dst_host, flow_value))
                 return flow_value
         
     else:
@@ -130,12 +154,23 @@ def export_to_influxdb(stop_event):
                             .tag("ip_dst", dst_host) \
                             .field("value", float(flow_value))
                         influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
-                        info("InfluxDB point written successfully\n")
-            onos_print_link_usage()
+                        debug("InfluxDB point written successfully\n")
+            return_value = onos_get_link_usage()
+            for src_device, dst_device, datarate in return_value:
+                point = Point("link_usage") \
+                    .tag("src_device", src_device) \
+                    .tag("dst_device", dst_device) \
+                    .field("datarate", float(datarate))
+                influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
             time.sleep(1)
         except Exception as e:
             info("Error exporting to InfluxDB: %s \n" % e)
             time.sleep(1)
+
+def remove_hsflow_pids(host_nodes):
+    for host in host_nodes:
+        info( '*** Removing old hsflowd pid files for host %s \n' % host.name)
+        os.system( 'rm ./hsflow/%s.pid' % host.name)
 
 
 class CustomTopology(Topo):
@@ -200,7 +235,7 @@ def create_veth_pairs(host_names):
         # create IP addresses for machines
         mininet_host_ip += 1
         internal_ip = network[0] + '.' + network[1] + '.' + network[2] + '.' + str(mininet_host_ip) + '/32'
-        info("Creating veth pair for %s\n" % host)
+        info("*** Creating veth pair for %s\n" % host)
         os.system( 'ip link add root-%s type veth peer name %s-root' % (host, host) )
         os.system( 'ip link set root-%s up' % host )
         os.system( 'ip addr add %s dev root-%s' % (vm_ip, host) )
@@ -254,11 +289,13 @@ def runNetwork():
     add_external_interfaces(host_names, net)
 
     net.start()
-    info("Network is running. \n")
+    info("*** Network is running. \n")
 
     # Configure IP addresses for hosts to communicate with the root namespace
     configure_host_ip(net)
 
+    remove_hsflow_pids(host_nodes)
+    
     for host in host_nodes:
         info( '*** Running hsflow process in %s \n' % host.name)
         host.cmd( '/usr/sbin/hsflowd -dd -f ./hsflow/%s.conf -p ./hsflow/%s.pid -D ./hsflow/%s.log &' % (host.name, host.name, host.name))
@@ -282,8 +319,8 @@ def runNetwork():
     delete_veth_pairs(host_names)
 
     # remove hsflow pid from folder ./hsflow
-    for host in host_nodes:
-        os.system( 'rm ./hsflow/%s.pid' % host.name)
+    remove_hsflow_pids(host_nodes)
+    
 
 if __name__ == '__main__':
     define_sflowrt_flow()
