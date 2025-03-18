@@ -8,7 +8,7 @@ from requests.auth import HTTPBasicAuth
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.node import RemoteController, OVSSwitch
-from mininet.link import Intf
+from mininet.link import Intf, TCLink
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info, debug
 from mininet.util import customClass
@@ -41,6 +41,10 @@ sflow_flows = {
     "tcpcwndsnd": {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcpcwndsnd"
+    },
+    "tcplost": {
+        "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
+        "value": "tcplost"
     }
 }
 
@@ -51,6 +55,7 @@ exec(open('sflow.py').read())
 influxdb_client = InfluxDBClient(url=influxdb_url, token=influxdb_token, org=influxdb_org)
 influxdb_write_api = influxdb_client.write_api(write_options=WriteOptions(batch_size=1))
 
+
 # Get links from ONOS
 def onos_get_links():
     url = '%s/onos/v1/links' % onos_url
@@ -60,12 +65,14 @@ def onos_get_links():
     else:
         raise Exception(f"Failed to get links from ONOS: {response.status_code} {response.text}")
 
+
 # Get link usage from ONOS
 def onos_get_port_stats(device_id, port_id):
     url = "%s/onos/v1/statistics/ports/%s/%s" % (onos_url, device_id, port_id)
     response = requests.get(url, auth=HTTPBasicAuth(onos_username, onos_password))
     response.raise_for_status()
     return response.json()
+
 
 def onos_get_link_usage():
     global onos_link_history
@@ -118,6 +125,7 @@ def define_sflowrt_flow():
         else:
             print("sflow-rt: flow " + flow + " already exists")
 
+
 # Get flow value
 def get_flow_value(flow, src_host, dst_host):
     flow_url = '%s/activeflows/ALL/%s/json' % (sflowrt_url, flow)
@@ -142,6 +150,7 @@ def export_to_influxdb(stop_event):
             # get flow names
             flow_keys = sflow_flows.keys()
             monitored_hosts = [['10.0.0.1', '10.0.0.2']]
+            influx_timestamp = time.time_ns()
             for host_pair in monitored_hosts:
                 src_host = host_pair[0]
                 dst_host = host_pair[1]
@@ -152,7 +161,8 @@ def export_to_influxdb(stop_event):
                             .tag("flow_type", flow) \
                             .tag("ip_src", src_host) \
                             .tag("ip_dst", dst_host) \
-                            .field("value", float(flow_value))
+                            .field("value", float(flow_value)) \
+                            .time(influx_timestamp)
                         influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
                         debug("InfluxDB point written successfully\n")
             return_value = onos_get_link_usage()
@@ -160,17 +170,66 @@ def export_to_influxdb(stop_event):
                 point = Point("link_usage") \
                     .tag("src_device", src_device) \
                     .tag("dst_device", dst_device) \
-                    .field("datarate", float(datarate))
+                    .field("datarate", float(datarate)) \
+                    .time(influx_timestamp)
                 influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
             time.sleep(1)
         except Exception as e:
             info("Error exporting to InfluxDB: %s \n" % e)
             time.sleep(1)
 
+
 def remove_hsflow_pids(host_nodes):
     for host in host_nodes:
         info( '*** Removing old hsflowd pid files for host %s \n' % host.name)
         os.system( 'rm ./hsflow/%s.pid' % host.name)
+
+
+def delete_veth_pairs(host_names):
+    for host in host_names:
+        os.system( 'ip link del root-%s' % host )
+
+
+def create_veth_pairs(host_names):
+    # get machine IP address
+    local_ip = os.popen('hostname -I').read().split()[0]
+    vm_ip = local_ip + '/24'
+    # get the network address from the IP
+    network = local_ip.split('.')
+
+    mininet_host_ip = 100
+    for host in host_names:
+        # create IP addresses for machines
+        mininet_host_ip += 1
+        internal_ip = network[0] + '.' + network[1] + '.' + network[2] + '.' + str(mininet_host_ip) + '/32'
+        info("*** Creating veth pair for %s\n" % host)
+        os.system( 'ip link add root-%s type veth peer name %s-root' % (host, host) )
+        os.system( 'ip link set root-%s up' % host )
+        os.system( 'ip addr add %s dev root-%s' % (vm_ip, host) )
+        os.system( 'ip route add %s dev root-%s' % (internal_ip, host) )
+
+
+def add_external_interfaces(host_names, net):
+    for host in host_names:
+        info("*** Adding interface to root namespace for host %s\n" % host)
+        iface_name = host + '-root'
+        _intf = Intf( iface_name, net.get(host))
+
+
+def configure_host_ip(net):
+    local_ip = os.popen('hostname -I').read().split()[0]
+    host_network = local_ip.split('.')
+    vm_ip_base = host_network[0] + '.' + host_network[1] + '.' + host_network[2]
+    host_network = host_network[0] + '.' + host_network[1] + '.' + host_network[2] + '.0/24'
+    mininet_host_ip = 100
+    # get the network address from the IP
+    host_nodes = net.hosts
+    for host in host_nodes:
+        mininet_host_ip += 1
+        host_intf = host.name + '-root'
+        internal_ip = vm_ip_base + '.' + str(mininet_host_ip) + '/24'
+        host.cmd( ' ip addr add %s dev %s' % (internal_ip, host_intf) )
+        host.cmd( ' ip route add %s dev %s' % (host_network, host_intf) )
 
 
 class CustomTopology(Topo):
@@ -218,56 +277,12 @@ class CustomTopology(Topo):
         # Connect hosts to the switches
         self.addLink(host1, g1_sw1)
         self.addLink(host2, g3_sw8)
-
-def delete_veth_pairs(host_names):
-    for host in host_names:
-        os.system( 'ip link del root-%s' % host )
-
-def create_veth_pairs(host_names):
-    # get machine IP address
-    local_ip = os.popen('hostname -I').read().split()[0]
-    vm_ip = local_ip + '/24'
-    # get the network address from the IP
-    network = local_ip.split('.')
-
-    mininet_host_ip = 100
-    for host in host_names:
-        # create IP addresses for machines
-        mininet_host_ip += 1
-        internal_ip = network[0] + '.' + network[1] + '.' + network[2] + '.' + str(mininet_host_ip) + '/32'
-        info("*** Creating veth pair for %s\n" % host)
-        os.system( 'ip link add root-%s type veth peer name %s-root' % (host, host) )
-        os.system( 'ip link set root-%s up' % host )
-        os.system( 'ip addr add %s dev root-%s' % (vm_ip, host) )
-        os.system( 'ip route add %s dev root-%s' % (internal_ip, host) )
-
-def add_external_interfaces(host_names, net):
-    for host in host_names:
-        info("*** Adding interface to root namespace for host %s\n" % host)
-        iface_name = host + '-root'
-        _intf = Intf( iface_name, net.get(host))
-
-
-def configure_host_ip(net):
-    local_ip = os.popen('hostname -I').read().split()[0]
-    host_network = local_ip.split('.')
-    vm_ip_base = host_network[0] + '.' + host_network[1] + '.' + host_network[2]
-    host_network = host_network[0] + '.' + host_network[1] + '.' + host_network[2] + '.0/24'
-    mininet_host_ip = 100
-    # get the network address from the IP
-    host_nodes = net.hosts
-    for host in host_nodes:
-        mininet_host_ip += 1
-        host_intf = host.name + '-root'
-        internal_ip = vm_ip_base + '.' + str(mininet_host_ip) + '/24'
-        host.cmd( ' ip addr add %s dev %s' % (internal_ip, host_intf) )
-        host.cmd( ' ip route add %s dev %s' % (host_network, host_intf) )
-
+        
 
 def runNetwork():
     setLogLevel('info')      # Set the logging level
     topo = CustomTopology()  # Create the topology
-    net = Mininet(topo=topo, switch=OVSSwitch, build=False)  # Set up the network
+    net = Mininet(topo=topo, switch=OVSSwitch, link=TCLink, build=False)  # Set up the network
 
     # Adding External controller
     c0 = net.addController(name='c0', controller=RemoteController, ip='localhost', protocol='tcp',port=6653)
