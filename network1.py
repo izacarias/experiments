@@ -343,7 +343,7 @@ def runNetwork():
 
     info("*** Start Iperf client on host h1\n")
     h1 = net.get('h1')
-    h1.cmd('iperf -c h2 -t 60 &')
+    h1.cmd('iperf -c 10.0.0.2 -t 300 &')
     
 
     time.sleep(60)
