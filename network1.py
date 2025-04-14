@@ -42,9 +42,21 @@ sflow_flows = {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcpcwndsnd"
     },
+    "tcpwindow": {
+        "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
+        "value": "tcpwindow"
+    },
     "tcplost": {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcplost"
+    },
+    "tcpretrans": {
+        "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
+        "value": "tcpretrans"
+    }
+    "tcpunacked": {
+        "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
+        "value": "tcpunacked"
     }
 }
 
@@ -151,12 +163,15 @@ def export_to_influxdb(stop_event):
             flow_keys = sflow_flows.keys()
             monitored_hosts = [['10.0.0.1', '10.0.0.2']]
             influx_timestamp = time.time_ns()
+            flow_collected = False
             for host_pair in monitored_hosts:
                 src_host = host_pair[0]
                 dst_host = host_pair[1]
+                # boolean to indicate wheter data was collected
                 for flow in flow_keys:
                     flow_value = get_flow_value(flow, src_host, dst_host)
                     if flow_value is not None:
+                        flow_collected = flow_collected or True
                         point = Point(flow) \
                             .tag("flow_type", flow) \
                             .tag("ip_src", src_host) \
@@ -165,14 +180,15 @@ def export_to_influxdb(stop_event):
                             .time(influx_timestamp)
                         influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
                         debug("InfluxDB point written successfully\n")
-            return_value = onos_get_link_usage()
-            for src_device, dst_device, datarate in return_value:
-                point = Point("link_usage") \
-                    .tag("src_device", src_device) \
-                    .tag("dst_device", dst_device) \
-                    .field("datarate", float(datarate)) \
-                    .time(influx_timestamp)
-                influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
+            if flow_collected:
+                return_value = onos_get_link_usage()
+                for src_device, dst_device, datarate in return_value:
+                    point = Point("link_usage") \
+                        .tag("src_device", src_device) \
+                        .tag("dst_device", dst_device) \
+                        .field("datarate", float(datarate)) \
+                        .time(influx_timestamp)
+                    influxdb_write_api.write(influxdb_bucket, influxdb_org, point)
             time.sleep(1)
         except Exception as e:
             info("Error exporting to InfluxDB: %s \n" % e)
@@ -250,34 +266,34 @@ class CustomTopology(Topo):
         g3_sw9 = self.addSwitch('s9', protocols="OpenFlow13")
 
         # Connect switches within group g1
-        self.addLink(g1_sw1, g1_sw2)
-        self.addLink(g1_sw2, g1_sw3)
-        self.addLink(g1_sw1, g1_sw3)
+        self.addLink(g1_sw1, g1_sw2, bw=99)    # l_1
+        self.addLink(g1_sw2, g1_sw3, bw=96)    # l_2
+        self.addLink(g1_sw1, g1_sw3, bw=100)    # l_3
         
         # Connect switches within group g2
-        self.addLink(g2_sw4, g2_sw5)
-        self.addLink(g2_sw5, g2_sw6)
-        self.addLink(g2_sw4, g2_sw6)
+        self.addLink(g2_sw4, g2_sw5, bw=93)    # l_4
+        self.addLink(g2_sw5, g2_sw6, bw=100)    # l_5
+        self.addLink(g2_sw4, g2_sw6, bw=95)    # l_6
         
         # Connect switches within group g3
-        self.addLink(g3_sw7, g3_sw8)
-        self.addLink(g3_sw8, g3_sw9)
-        self.addLink(g3_sw7, g3_sw9)
+        self.addLink(g3_sw7, g3_sw8, bw=89)    # l_7
+        self.addLink(g3_sw8, g3_sw9, bw=91)    # l_8
+        self.addLink(g3_sw7, g3_sw9, bw=97)    # l_9
 
         # Connect each group via links
         # g1 to g2
-        self.addLink(g1_sw3, g2_sw4)
+        self.addLink(g1_sw3, g2_sw4, bw=97)    # l_10
         # g2 to g3
-        self.addLink(g2_sw5, g3_sw9)
+        self.addLink(g2_sw5, g3_sw9, bw=86)    # l_11
 
         # Add hosts and connect to specific switches
         host1 = self.addHost('h1')  # Host in group g1
         host2 = self.addHost('h2')  # Host in group g3
 
         # Connect hosts to the switches
-        self.addLink(host1, g1_sw1)
-        self.addLink(host2, g3_sw8)
-        
+        self.addLink(host1, g1_sw1)     # l_12
+        self.addLink(host2, g3_sw8)     # l_13
+
 
 def runNetwork():
     setLogLevel('info')      # Set the logging level
@@ -321,6 +337,17 @@ def runNetwork():
     export_thread.daemon = True
     export_thread.start()
 
+    info("*** Start Iperf server on host h2\n")
+    h2 = net.get('h2')
+    h2.cmd('iperf -s &')
+
+    info("*** Start Iperf client on host h1\n")
+    h1 = net.get('h1')
+    h1.cmd('iperf -c h2 -t 60 &')
+    
+
+    time.sleep(60)
+    info("*** Running Mininet CLI\n")
     CLI(net)  # Start the mininet command line interface
     
     # Stop thread
