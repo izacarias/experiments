@@ -53,7 +53,7 @@ sflow_flows = {
     "tcpretrans": {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcpretrans"
-    }
+    },
     "tcpunacked": {
         "keys": "ipsource,ipdestination,tcpsourceport,tcpdestinationport",
         "value": "tcpunacked"
