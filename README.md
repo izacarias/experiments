@@ -67,3 +67,31 @@ http://localhost:8008
 
 ### Mininet sample script
 Check the file `network1.py`
+
+
+# Step by step how to run the experiment
+
+## Run Services
+cd /home/mininet/experiments
+sudo docker-compose down
+sudo docker-compose up -d
+
+## Enable apps in Onos
+ssh -oHostKeyAlgorithms=+ssh-rsa -p 8101 onos@localhost (onos/rocks)
+app activate org.onosproject.drivers
+app activate org.onosproject.hostprovider
+app activate org.onosproject.lldpprovider
+app activate org.onosproject.gui2
+app activate org.onosproject.openflow-base
+app activate org.onosproject.openflow
+app activate org.onosproject.optical-model
+app activate org.onosproject.proxyarp
+app activate org.onosproject.fwd
+
+
+## Configure Onos
+- firefox http://localhost:8181/onos/ui/
+- Click in the menu icon on top left -> Applications
+- Enable the following applications:
+    - 
+    - 
