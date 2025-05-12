@@ -3,3 +3,4 @@ influxdb2/data/influxd.bolt
 hsflow/*.log
 hsflow/*.pid
 .env
+data-priv
