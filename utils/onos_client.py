@@ -64,7 +64,7 @@ def onos_get_link_usage():
             current_datarate = prev_stats['datarate']
 
         # Check if values are valid
-        info(" --- Link %s to %s: datarate: %d Mbps\n" % (src_device, dst_device, current_datarate/(1024*1024)))
+        debug(" --- Link %s to %s: datarate: %d Mbps\n" % (src_device, dst_device, current_datarate/(1024*1024)))
 
         # Update historical data
         onos_link_history[link_key] = {
