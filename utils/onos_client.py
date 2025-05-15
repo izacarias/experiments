@@ -1,7 +1,7 @@
 import requests
 from requests.auth import HTTPBasicAuth
 import os
-from mininet.log import debug
+from mininet.log import debug, info
 
 # Load ONOS credentials from environment variables
 onos_url = os.getenv('ONOS_URL', 'http://localhost:8181')
@@ -45,20 +45,33 @@ def onos_get_link_usage():
 
         # Get historical data
         link_key = (src_device, src_port)
-        prev_stats = onos_link_history.get(link_key, {'bytes': current_bytes, 'duration': current_duration})
+        prev_stats = onos_link_history.get(link_key, None)
 
-        # Calculate delta values
-        bytes_delta = current_bytes - prev_stats['bytes']
-        duration_delta = current_duration - prev_stats['duration']
+        if prev_stats is None:
+            # no previous stats
+            bytes_delta = current_bytes
+            duration_delta = current_duration
+        else:
+            # calculate delta
+            bytes_delta = current_bytes - prev_stats['bytes']
+            duration_delta = current_duration - prev_stats['duration']
 
         # Calculate data rate
-        datarate = (bytes_delta * 8) / duration_delta if duration_delta > 0 else 0
+        if duration_delta > 0:
+            current_datarate = (bytes_delta * 8) / duration_delta
+        else:
+            # keep old value
+            current_datarate = prev_stats['datarate']
+
+        # Check if values are valid
+        info(" --- Link %s to %s: datarate: %d Mbps\n" % (src_device, dst_device, current_datarate/(1024*1024)))
 
         # Update historical data
         onos_link_history[link_key] = {
             'bytes': current_bytes,
-            'duration': current_duration
+            'duration': current_duration,
+            'datarate': current_datarate
         }
-        debug("Datarate for %s to %s: %d bps \n" % (src_device, dst_device, datarate))
-        return_value.append((src_device, dst_device, datarate))
+        debug("Datarate for %s to %s: %d bps \n" % (src_device, dst_device, current_datarate))
+        return_value.append((src_device, dst_device, current_datarate))
     return return_value
