@@ -80,7 +80,8 @@ sudo docker-compose up -d
 
 ## Enable apps in Onos
 ```
-ssh -oHostKeyAlgorithms=+ssh-rsa -p 8101 onos@localhost (onos/rocks)
+ssh-keygen -f "/home/mininet/.ssh/known_hosts" -R "[localhost]:8101"
+ssh -oHostKeyAlgorithms=+ssh-rsa -p 8101 onos@localhost
 app activate org.onosproject.drivers
 app activate org.onosproject.hostprovider
 app activate org.onosproject.lldpprovider
