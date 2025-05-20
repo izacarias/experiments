@@ -3,6 +3,7 @@
 import os
 import requests
 import time
+import datetime
 import threading
 from requests.auth import HTTPBasicAuth
 from mininet.topo import Topo
@@ -161,9 +162,9 @@ class CustomTopology(Topo):
 
         # Connect each group via links
         # g1 to g2
-        self.addLink(g1_sw3, g2_sw4, bw=97)    # l_10
+        self.addLink(g1_sw3, g2_sw4, bw=100)    # l_10
         # g2 to g3
-        self.addLink(g2_sw5, g3_sw9, bw=86)    # l_11
+        self.addLink(g2_sw5, g3_sw9, bw=100)    # l_11
 
         # Add hosts and connect to specific switches
         host1 = self.addHost('h1')  # Host in group g1
@@ -220,12 +221,14 @@ def runNetwork():
     h2 = net.get('h2')
     h2.cmd('iperf -s &')
 
+    now = datetime.now() # get current date and time to use in the file name
+    iperf_file = now.strftime("%Y%m%d%H%M%S") + "-iperf.log"
     info("*** Start Iperf client on host h1\n")
     h1 = net.get('h1')
-    h1.cmd('iperf -c 10.0.0.2 -t 900 &')
+    h1.cmd('iperf -c 10.0.0.2 -t 1800 -i 15 -f ' + iperf_file  + '&')
     
 
-    time.sleep(910)
+    time.sleep(1810)
     # info("*** Running Mininet CLI\n")
     # CLI(net)  # Start the mininet command line interface
     
