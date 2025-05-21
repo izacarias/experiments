@@ -3,8 +3,8 @@
 import os
 import requests
 import time
-import datetime
 import threading
+from datetime import datetime
 from requests.auth import HTTPBasicAuth
 from mininet.topo import Topo
 from mininet.net import Mininet
@@ -222,10 +222,11 @@ def runNetwork():
     h2.cmd('iperf -s &')
 
     now = datetime.now() # get current date and time to use in the file name
-    iperf_file = now.strftime("%Y%m%d%H%M%S") + "-iperf.log"
+    iperf_file = now.strftime("%Y%m%d%H%M%S") + "-loss" + str(LINK_LOSS) + ".log"
     info("*** Start Iperf client on host h1\n")
+    info("*** Saving output to file " + iperf_file + "\n")
     h1 = net.get('h1')
-    h1.cmd('iperf -c 10.0.0.2 -t 1800 -i 15 -f ' + iperf_file  + '&')
+    h1.cmd('iperf -c 10.0.0.2 -t 1800 -i 15 -o ' + iperf_file  + '&')
     
 
     time.sleep(1810)
