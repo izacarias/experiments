@@ -50,7 +50,7 @@ ROUTING_PATH2 = [
     {
         "deviceId": "of:0000000000000001",
         "inputPort": "3",
-        "outputPort": "2",
+        "outputPort": "1",
     },
     {
         "deviceId": "of:0000000000000002",
@@ -133,10 +133,11 @@ def create_flow(device_id, input_port, output_port):
 def delete_old_flows():
     print("Deleting old flows")
     url = f"{onos_url}/onos/v1/flows/application/{APP_ID}"
-    headers = {'Content-Type': 'application/json'}
+    print(f"Using URL: {url}")
+    headers = {'Accept': 'application/json'}
     response = requests.delete(url, headers=headers, auth=HTTPBasicAuth(onos_username, onos_password))
     
-    if response.status_code == 201:
+    if response.status_code == 204:
         print("Old flow rules deleted successfully.\n")
     else:
         print(f"Failed to delete old flow rules: {response.status_code}: {response.text}\n")
